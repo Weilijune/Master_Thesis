@@ -1,12 +1,14 @@
 rm(list=ls())
 library(dplyr)
 library(ggplot2)
+library(Matrix)
+library("magrittr")
 
 # parameter
 theta = 0.5          # long-run mean
 k = 0.5              # mean-reversion speed
 sigma = 0.1          # volatility
-N = 5                # number of state variable set = 2N+1
+N = 10                # number of state variable set = 2N+1
 h = sigma / sqrt(N*k) # step size
 T = 2                 # maturity
 num_states = 2*N + 1
@@ -42,7 +44,15 @@ P_0[N+1] = 1 # assume r0 = theta, which is the (n+1)th states
 q_0 = P_0
 
 q_T = q_0 %*% expm((A-V)*T)
+
+# ZCB price under discrete Vasicek model (discrete OU process)
 ZCB_0 = sum(q_T)
+
+# check with the closed-form solution of Vasicek model (continuous)
+B = (1-exp(-k*(T-0)))/k
+a = (B - (T-0))*(k*(k*theta) - 0.5*sigma^2)/(k^2) - (sigma^2 * B^2)/(4*k)
+ZCB_closed_form = exp(a - B*theta) # r(0) = theta
+
 
 ##########################################################################################################
 # after 1 unit time, the probability distribution of r(1)
@@ -59,7 +69,19 @@ ZCB_1
 # plot ZCB dist
 df1 = rbind(P_1, matrix(ZCB_1, nrow = 1, ncol = num_states)) %>% t(.)
 colnames(df1) <- c("prob", "ZCB_price")
-df1 %>% as.data.frame(.) %>% ggplot() + geom_col(aes(ZCB_price, prob), col = "blue")
+as.matrix(df1) %>% as.data.frame(.) %>% ggplot() + geom_col(aes(ZCB_price, prob), col = "blue")
 
-# VaR
-cumsum(P_1)
+# Since state of r(0) if from small to big, the state of ZCB is from big to small 
+# (we have to reverse the sequence, or we will get wrong VaR, like the code below)
+cdf = cumsum(P_1) 
+plot(ZCB_1, cdf, type = "l") # wrong picture for VaR
+
+# 1-day 95% VaR for loss
+df2 = rbind(cumsum(P_1[num_states:1]), matrix(ZCB_1[num_states:1] - ZCB_0, nrow = 1, ncol = num_states)) %>% t(.) %>% as.data.frame(.)
+colnames(df2) <- c("CDF", "ZCB_loss")
+plot(df2$ZCB_loss, df2$CDF, type = "p") 
+lines(df2$ZCB_loss, df2$CDF, type = "l") 
+abline(h=0.05, col = "blue", lty = 2)
+
+df2 %>% filter(CDF<=0.05) %>% slice_tail(n=1)
+VaR = df2 %>% filter(CDF<=0.05) %>% slice_tail(n=1) %$% ZCB_loss
