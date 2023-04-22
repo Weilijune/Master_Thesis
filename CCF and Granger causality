@@ -1,0 +1,50 @@
+# Cross correlation function (CCF) AND Granger Causality Test
+rm(list=ls())
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+library(lubridate)
+library(tseries)
+library(zoo)
+library(lmtest)
+
+# Read files
+df = read.csv("D:/作業/台大課程/論文/data/default_interest_rate.csv") %>% na.omit()
+
+df$month = df$date %>% as.Date(.) %>% month(.)
+
+# The lag k value returned by ccf(x, y) estimates the correlation between x[t+k] and y[t].
+# 1year default rate and the lagged value (0-12 period) 3 month interest rate 
+ccf(df$X1y_dr_NorthAmerica, df$TB3MS, lag.max = 12, plot = F) %>% 
+plot(., main = "Cross correlation function",xlim = c(0,12), lwd = 1)
+
+# quarterly data
+quarter_month = c(1,4,7,10)
+df_q = df %>% filter(month %in% quarter_month)
+ccf(df_q$X1y_dr_NorthAmerica, df_q$TB3MS, lag.max = 12, plot = F) %>% 
+    plot(., main = "Cross correlation function",xlim = c(0,12), lwd = 1)
+
+df$rmean_lambda = rollapply(df$X1y_dr_NorthAmerica, 3, mean, align = "right", fill = 0)
+df_mean_q = df %>% filter(month %in% quarter_month)
+ccf(df_mean_q$rmean_lambda, df_mean_q$TB3MS, lag.max = 12, plot = F) %>% 
+    plot(., main = "Cross correlation function",xlim = c(0,12), lwd = 1)
+ccf(df_mean_q$TB3MS, df_mean_q$rmean_lambda, lag.max = 12, plot = F) %>% 
+    plot(., main = "Cross correlation function",xlim = c(0,12), lwd = 1)
+
+grangertest(TB3MS~rmean_lambda, order = 6, data = df_mean_q)
+grangertest(rmean_lambda~TB3MS, order = 6, data = df_mean_q)
+
+# 3 month rate and lagged value (0-12 preiod) 1 year default rate
+# 過去的違約率與未來的利率的關係 (當過去的違約率越高，政府傾向調整為寬鬆政策，使企業壓力減低)
+ccf(df_q$TB3MS, df_q$X1y_dr_NorthAmerica, lag.max = 12, plot = F) %>% 
+    plot(., main = "Cross correlation function",xlim = c(0,12), lwd = 1)
+
+# stationary test: ADF test
+adf.test(df_q$TB3MS)
+adf.test(df_q$X1y_dr_NorthAmerica)
+adf.test(df_mean_q$rmean_lambda)
+
+# Granger Causality Test
+grangertest(TB3MS~X1y_dr_NorthAmerica, order = 6, data = df_q)
+grangertest(X1y_dr_NorthAmerica~TB3MS, order = 6, data = df_q)
